@@ -1,13 +1,13 @@
 {
-  "name": "whatsapp-konum-bot",
+  "name": "whatsapp-location-bot",
   "version": "1.0.0",
-  "description": "WhatsApp Konum Botu",
+  "description": "Railway için konum yanıtlayan WhatsApp botu",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "baileys": "latest",
-    "qrcode-terminal": "latest"
+    "baileys": "^6.5.0",
+    "qrcode-terminal": "^0.12.0"
   }
 }
