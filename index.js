@@ -1,13 +1,11 @@
 // Gerekli paketleri içe aktarma
 const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('baileys');
-const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
+const qr = require('qrcode');
 
-// Railway için kalıcı depolama yolu ayarla
-const AUTH_FOLDER = process.env.RAILWAY_STATIC_URL ? '/data/auth_info' : './auth_info';
-
-// Klasör yoksa oluştur
+// Basit klasör kontrolü
+const AUTH_FOLDER = './auth_info';
 if (!fs.existsSync(AUTH_FOLDER)) {
     fs.mkdirSync(AUTH_FOLDER, { recursive: true });
     console.log(`Auth klasörü oluşturuldu: ${AUTH_FOLDER}`);
@@ -21,6 +19,18 @@ const LOCATION_DATA = {
     // İsterseniz buraya otel adı ekleyebilirsiniz
     // name: "Otel Adı"
 };
+
+// QR kodu URL formatına çevirme
+async function qrCodeToDataURL(qrCode) {
+    try {
+        // QR kodu base64 formatında URL'ye çevir
+        const url = await qr.toDataURL(qrCode);
+        return url;
+    } catch (error) {
+        console.error("QR kod URL'ye çevrilemedi:", error);
+        return null;
+    }
+}
 
 // WhatsApp botu başlat
 async function startWhatsAppBot() {
@@ -45,7 +55,7 @@ async function startWhatsAppBot() {
             
             // WhatsApp'a bağlan
             const sock = makeWASocket({
-                printQRInTerminal: true, // Terminal'de QR kodu gösterme
+                printQRInTerminal: false, // Terminal'de QR kodu göstermeyi kapat
                 auth: state,
                 browser: ['Otel Konum Bot', 'Chrome', '10.0'],
                 connectTimeoutMs: 60000,
@@ -70,16 +80,24 @@ async function startWhatsAppBot() {
             });
             
             // Bağlantı durumunu dinle
-            sock.ev.on('connection.update', (update) => {
+            sock.ev.on('connection.update', async (update) => {
                 const { connection, lastDisconnect, qr } = update;
                 
                 // QR kodu görüntülendiğinde
                 if (qr) {
                     console.log('\n\n');
                     console.log('=================== QR KOD ===================');
-                    console.log('QR KODU WHATSAPP\'TA TARAYIN:');
-                    // QR kodu terminal'de görüntüle
-                    qrcode.generate(qr, { small: true });
+                    
+                    // QR kodu URL formatına çevir
+                    const qrUrl = await qrCodeToDataURL(qr);
+                    
+                    if (qrUrl) {
+                        console.log('QR KODU WHATSAPP\'TA TARAYIN:');
+                        console.log('QR Kod URL:', qrUrl);
+                    } else {
+                        console.log('QR kod URL olarak oluşturulamadı, lütfen tekrar deneyin.');
+                    }
+                    
                     console.log('==============================================');
                     console.log('\n\n');
                 }
@@ -96,7 +114,6 @@ async function startWhatsAppBot() {
                         connectToWhatsApp();
                     } else {
                         console.log('Oturum sonlandırıldı. Tekrar başlatılıyor...');
-                        // Railway'de process.exit() kullanmayın, bunun yerine yeniden deneyin
                         setTimeout(connectToWhatsApp, 30000);
                     }
                 } else if (connection === 'open') {
