@@ -19,7 +19,7 @@ const LOCATION_DATA = {
     latitude: 39.92381451790397,
     longitude: 32.82544004031294,
     // İsterseniz buraya otel adı ekleyebilirsiniz
-    name: "Maya Apart Otel"
+    // name: "Otel Adı"
 };
 
 // WhatsApp botu başlat
