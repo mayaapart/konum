@@ -11,60 +11,39 @@ if (!fs.existsSync(AUTH_FOLDER)) {
     console.log(`Auth klasörü oluşturuldu: ${AUTH_FOLDER}`);
 }
 
-// Bağlantı durumunu izlemek için global değişken
-let connectionStatus = {
-    qrShown: false,              // QR kodunun gösterilip gösterilmediği
-    reconnectCount: 0,           // Yeniden bağlanma sayısı
-    lastConnectionTime: 0,       // Son bağlantı zamanı
-    isAuthenticated: false       // Kimlik doğrulama durumu
-};
-
-// Oturum bilgisini izlemek için global değişken
-let sessionFileExists = false;
-
 // Bot ayarları
 const LOCATION_TRIGGER_WORDS = ['konum', 'lokasyon', 'nerede', 'adres', 'location', 'where']; // Farklı dillerde tetikleyici kelimeler
 const LOCATION_DATA = {
     latitude: 39.92381451790397,
-    longitude: 32.82544004031294
+    longitude: 32.82544004031294,
+    // İsterseniz buraya otel adı ekleyebilirsiniz
+    // name: "Otel Adı"
 };
 
 // WhatsApp botu başlat
 async function startWhatsAppBot() {
-    // Oturum dosyası var mı kontrol et
-    try {
-        const files = fs.readdirSync(AUTH_FOLDER);
-        sessionFileExists = files.length > 0;
-        
-        if (sessionFileExists) {
-            console.log('Mevcut oturum bilgisi bulundu. QR kodu gösterilmeyecek.');
-        } else {
-            console.log('Oturum bilgisi bulunamadı. Başlangıç ayarlaması gerekiyor.');
-        }
-    } catch (error) {
-        console.error('Oturum kontrolü sırasında hata:', error);
-    }
+    // Bağlantı zamanını takip et (yeniden bağlanma gecikmesi için)
+    let lastConnectionTime = 0;
     
     // Bağlantı fonksiyonu
     async function connectToWhatsApp() {
+        // Çok sık yeniden bağlanmayı önle
+        const now = Date.now();
+        if (now - lastConnectionTime < 10000) {
+            const waitTime = 10000 - (now - lastConnectionTime);
+            console.log(`Çok sık yeniden bağlanma önleniyor. ${waitTime}ms bekleniyor...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+        
+        lastConnectionTime = Date.now();
+        
         try {
-            // Çok sık yeniden bağlanmayı önle
-            const now = Date.now();
-            if (now - connectionStatus.lastConnectionTime < 10000) {
-                const waitTime = 10000 - (now - connectionStatus.lastConnectionTime);
-                console.log(`Çok sık yeniden bağlanma önleniyor. ${waitTime}ms bekleniyor...`);
-                await new Promise(resolve => setTimeout(resolve, waitTime));
-            }
-            
-            connectionStatus.lastConnectionTime = Date.now();
-            connectionStatus.reconnectCount += 1;
-            
             // Oturum bilgilerini yükle
             const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
             
             // WhatsApp'a bağlan
             const sock = makeWASocket({
-                printQRInTerminal: false, // Terminal'de QR kodu göstermeyi kapat
+                printQRInTerminal: true, // Terminal'de QR kodu gösterme
                 auth: state,
                 browser: ['Otel Konum Bot', 'Chrome', '10.0'],
                 connectTimeoutMs: 60000,
@@ -72,13 +51,7 @@ async function startWhatsAppBot() {
             });
             
             // Oturum bilgilerini kaydet
-            sock.ev.on('creds.update', async (creds) => {
-                await saveCreds();
-                if (!connectionStatus.isAuthenticated) {
-                    connectionStatus.isAuthenticated = true;
-                    console.log('Kimlik doğrulama başarılı, oturum bilgileri kaydedildi.');
-                }
-            });
+            sock.ev.on('creds.update', saveCreds);
             
             // Gelen mesajları dinle
             sock.ev.on('messages.upsert', async ({ messages }) => {
@@ -95,16 +68,14 @@ async function startWhatsAppBot() {
             });
             
             // Bağlantı durumunu dinle
-            sock.ev.on('connection.update', async (update) => {
+            sock.ev.on('connection.update', (update) => {
                 const { connection, lastDisconnect, qr } = update;
                 
-                // QR kodu görüntülendiğinde ve daha önce gösterilmediyse
-                if (qr && !connectionStatus.qrShown && !sessionFileExists) {
-                    connectionStatus.qrShown = true; // QR kodunun gösterildiğini işaretle
-                    
+                // QR kodu görüntülendiğinde
+                if (qr) {
                     console.log('\n\n');
                     console.log('=================== QR KOD ===================');
-                    console.log('QR KODU WHATSAPP\'TA TARAYIN: (sadece bir kez gösterilecek)');
+                    console.log('QR KODU WHATSAPP\'TA TARAYIN:');
                     
                     // QR kodu terminal'de görüntüle
                     qrcode.generate(qr, { small: true });
@@ -118,36 +89,22 @@ async function startWhatsAppBot() {
                     const statusCode = lastDisconnect?.error?.output?.statusCode;
                     const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
                     
-                    console.log(`Bağlantı kapandı. Durum kodu: ${statusCode}. Bağlantı deneme sayısı: ${connectionStatus.reconnectCount}`);
+                    console.log(`Bağlantı kapandı. Durum kodu: ${statusCode}`);
                     
-                    if (shouldReconnect && connectionStatus.reconnectCount < 10) {
+                    if (shouldReconnect) {
                         console.log('Yeniden bağlanılıyor...');
                         connectToWhatsApp();
-                    } else if (connectionStatus.reconnectCount >= 10) {
-                        console.log('Maksimum yeniden bağlanma denemesi aşıldı. Bekleniyor...');
-                        // 5 dakika bekleyip yeniden dene
-                        setTimeout(() => {
-                            connectionStatus.reconnectCount = 0;
-                            connectToWhatsApp();
-                        }, 5 * 60 * 1000);
                     } else {
                         console.log('Oturum sonlandırıldı. Tekrar başlatılıyor...');
                         setTimeout(connectToWhatsApp, 30000);
                     }
                 } else if (connection === 'open') {
-                    // Bağlantı başarılı oldu, yeniden bağlanma sayacını sıfırla
-                    connectionStatus.reconnectCount = 0;
-                    connectionStatus.isAuthenticated = true;
-                    
                     console.log('\n\n');
                     console.log('====================================');
                     console.log('| WhatsApp Konum Botu aktif!       |');
                     console.log('| "Konum" içeren mesajları dinliyor |');
                     console.log('====================================');
                     console.log('\n');
-                    
-                    // Oturum dosyasının varlığını güncelle
-                    sessionFileExists = true;
                 }
             });
         } catch (error) {
@@ -219,9 +176,20 @@ async function startWhatsAppBot() {
     
     // Botu başlat
     console.log('WhatsApp Konum Bot başlatılıyor...');
-    console.log(`Yeniden başlatma sayısı: ${connectionStatus.reconnectCount}`);
     connectToWhatsApp();
 }
 
-// Botu çalıştır
-startWhatsAppBot();
+// HTTP sunucusu oluştur (Railway için gerekli)
+const http = require('http');
+const PORT = process.env.PORT || 3000;
+
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end('<h1>WhatsApp Konum Botu Çalışıyor</h1>');
+});
+
+server.listen(PORT, () => {
+    console.log(`Server ${PORT} portunda çalışıyor`);
+    // Botu çalıştır
+    startWhatsAppBot();
+});
