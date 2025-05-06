@@ -1,0 +1,13 @@
+{
+  "name": "whatsapp-konum-bot",
+  "version": "1.0.0",
+  "description": "WhatsApp Konum Botu",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "baileys": "latest",
+    "qrcode-terminal": "latest"
+  }
+}
