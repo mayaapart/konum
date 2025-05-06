@@ -2,7 +2,7 @@
 const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('baileys');
 const fs = require('fs');
 const path = require('path');
-const qr = require('qrcode');
+const qrcode = require('qrcode-terminal');
 
 // Basit klasör kontrolü
 const AUTH_FOLDER = './auth_info';
@@ -11,45 +11,54 @@ if (!fs.existsSync(AUTH_FOLDER)) {
     console.log(`Auth klasörü oluşturuldu: ${AUTH_FOLDER}`);
 }
 
+// Bağlantı durumunu izlemek için global değişken
+let connectionStatus = {
+    qrShown: false,              // QR kodunun gösterilip gösterilmediği
+    reconnectCount: 0,           // Yeniden bağlanma sayısı
+    lastConnectionTime: 0,       // Son bağlantı zamanı
+    isAuthenticated: false       // Kimlik doğrulama durumu
+};
+
+// Oturum bilgisini izlemek için global değişken
+let sessionFileExists = false;
+
 // Bot ayarları
 const LOCATION_TRIGGER_WORDS = ['konum', 'lokasyon', 'nerede', 'adres', 'location', 'where']; // Farklı dillerde tetikleyici kelimeler
 const LOCATION_DATA = {
     latitude: 39.92381451790397,
-    longitude: 32.82544004031294,
-    // İsterseniz buraya otel adı ekleyebilirsiniz
-    // name: "Otel Adı"
+    longitude: 32.82544004031294
 };
-
-// QR kodu URL formatına çevirme
-async function qrCodeToDataURL(qrCode) {
-    try {
-        // QR kodu base64 formatında URL'ye çevir
-        const url = await qr.toDataURL(qrCode);
-        return url;
-    } catch (error) {
-        console.error("QR kod URL'ye çevrilemedi:", error);
-        return null;
-    }
-}
 
 // WhatsApp botu başlat
 async function startWhatsAppBot() {
-    // Bağlantı zamanını takip et (yeniden bağlanma gecikmesi için)
-    let lastConnectionTime = 0;
+    // Oturum dosyası var mı kontrol et
+    try {
+        const files = fs.readdirSync(AUTH_FOLDER);
+        sessionFileExists = files.length > 0;
+        
+        if (sessionFileExists) {
+            console.log('Mevcut oturum bilgisi bulundu. QR kodu gösterilmeyecek.');
+        } else {
+            console.log('Oturum bilgisi bulunamadı. Başlangıç ayarlaması gerekiyor.');
+        }
+    } catch (error) {
+        console.error('Oturum kontrolü sırasında hata:', error);
+    }
     
     // Bağlantı fonksiyonu
     async function connectToWhatsApp() {
-        // Çok sık yeniden bağlanmayı önle
-        const now = Date.now();
-        if (now - lastConnectionTime < 10000) {
-            const waitTime = 10000 - (now - lastConnectionTime);
-            console.log(`Çok sık yeniden bağlanma önleniyor. ${waitTime}ms bekleniyor...`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-        }
-        
-        lastConnectionTime = Date.now();
-        
         try {
+            // Çok sık yeniden bağlanmayı önle
+            const now = Date.now();
+            if (now - connectionStatus.lastConnectionTime < 10000) {
+                const waitTime = 10000 - (now - connectionStatus.lastConnectionTime);
+                console.log(`Çok sık yeniden bağlanma önleniyor. ${waitTime}ms bekleniyor...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+            }
+            
+            connectionStatus.lastConnectionTime = Date.now();
+            connectionStatus.reconnectCount += 1;
+            
             // Oturum bilgilerini yükle
             const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
             
@@ -63,7 +72,13 @@ async function startWhatsAppBot() {
             });
             
             // Oturum bilgilerini kaydet
-            sock.ev.on('creds.update', saveCreds);
+            sock.ev.on('creds.update', async (creds) => {
+                await saveCreds();
+                if (!connectionStatus.isAuthenticated) {
+                    connectionStatus.isAuthenticated = true;
+                    console.log('Kimlik doğrulama başarılı, oturum bilgileri kaydedildi.');
+                }
+            });
             
             // Gelen mesajları dinle
             sock.ev.on('messages.upsert', async ({ messages }) => {
@@ -83,20 +98,16 @@ async function startWhatsAppBot() {
             sock.ev.on('connection.update', async (update) => {
                 const { connection, lastDisconnect, qr } = update;
                 
-                // QR kodu görüntülendiğinde
-                if (qr) {
+                // QR kodu görüntülendiğinde ve daha önce gösterilmediyse
+                if (qr && !connectionStatus.qrShown && !sessionFileExists) {
+                    connectionStatus.qrShown = true; // QR kodunun gösterildiğini işaretle
+                    
                     console.log('\n\n');
                     console.log('=================== QR KOD ===================');
+                    console.log('QR KODU WHATSAPP\'TA TARAYIN: (sadece bir kez gösterilecek)');
                     
-                    // QR kodu URL formatına çevir
-                    const qrUrl = await qrCodeToDataURL(qr);
-                    
-                    if (qrUrl) {
-                        console.log('QR KODU WHATSAPP\'TA TARAYIN:');
-                        console.log('QR Kod URL:', qrUrl);
-                    } else {
-                        console.log('QR kod URL olarak oluşturulamadı, lütfen tekrar deneyin.');
-                    }
+                    // QR kodu terminal'de görüntüle
+                    qrcode.generate(qr, { small: true });
                     
                     console.log('==============================================');
                     console.log('\n\n');
@@ -107,22 +118,36 @@ async function startWhatsAppBot() {
                     const statusCode = lastDisconnect?.error?.output?.statusCode;
                     const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
                     
-                    console.log(`Bağlantı kapandı. Durum kodu: ${statusCode}`);
+                    console.log(`Bağlantı kapandı. Durum kodu: ${statusCode}. Bağlantı deneme sayısı: ${connectionStatus.reconnectCount}`);
                     
-                    if (shouldReconnect) {
+                    if (shouldReconnect && connectionStatus.reconnectCount < 10) {
                         console.log('Yeniden bağlanılıyor...');
                         connectToWhatsApp();
+                    } else if (connectionStatus.reconnectCount >= 10) {
+                        console.log('Maksimum yeniden bağlanma denemesi aşıldı. Bekleniyor...');
+                        // 5 dakika bekleyip yeniden dene
+                        setTimeout(() => {
+                            connectionStatus.reconnectCount = 0;
+                            connectToWhatsApp();
+                        }, 5 * 60 * 1000);
                     } else {
                         console.log('Oturum sonlandırıldı. Tekrar başlatılıyor...');
                         setTimeout(connectToWhatsApp, 30000);
                     }
                 } else if (connection === 'open') {
+                    // Bağlantı başarılı oldu, yeniden bağlanma sayacını sıfırla
+                    connectionStatus.reconnectCount = 0;
+                    connectionStatus.isAuthenticated = true;
+                    
                     console.log('\n\n');
                     console.log('====================================');
                     console.log('| WhatsApp Konum Botu aktif!       |');
                     console.log('| "Konum" içeren mesajları dinliyor |');
                     console.log('====================================');
                     console.log('\n');
+                    
+                    // Oturum dosyasının varlığını güncelle
+                    sessionFileExists = true;
                 }
             });
         } catch (error) {
@@ -170,8 +195,7 @@ async function startWhatsAppBot() {
                 await sock.sendMessage(message.key.remoteJid, { 
                     location: { 
                         degreesLatitude: LOCATION_DATA.latitude,
-                        degreesLongitude: LOCATION_DATA.longitude,
-                        name: LOCATION_DATA.name // İsteğe bağlı
+                        degreesLongitude: LOCATION_DATA.longitude
                     } 
                 });
                 
@@ -195,6 +219,7 @@ async function startWhatsAppBot() {
     
     // Botu başlat
     console.log('WhatsApp Konum Bot başlatılıyor...');
+    console.log(`Yeniden başlatma sayısı: ${connectionStatus.reconnectCount}`);
     connectToWhatsApp();
 }
 
