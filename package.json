@@ -1,7 +1,7 @@
 {
   "name": "whatsapp-konum-bot",
   "version": "1.0.0",
-  "description": "WhatsApp Konum Botu",
+  "description": "WhatsApp Konum Botu - Railway için",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -9,5 +9,8 @@
   "dependencies": {
     "baileys": "latest",
     "qrcode-terminal": "latest"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 }
