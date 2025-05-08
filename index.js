@@ -2,13 +2,26 @@
 const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('baileys');
 const fs = require('fs');
 const path = require('path');
-const qrcode = require('qrcode-terminal');
+const qrcode = require('qrcode');
+const http = require('http');
 
 // Basit klasör kontrolü
 const AUTH_FOLDER = './auth_info';
 if (!fs.existsSync(AUTH_FOLDER)) {
     fs.mkdirSync(AUTH_FOLDER, { recursive: true });
     console.log(`Auth klasörü oluşturuldu: ${AUTH_FOLDER}`);
+}
+
+// QR kodu URL formatına çevirme
+async function qrCodeToDataURL(qrCode) {
+    try {
+        // QR kodu base64 formatında URL'ye çevir
+        const url = await qrcode.toDataURL(qrCode);
+        return url;
+    } catch (error) {
+        console.error("QR kod URL'ye çevrilemedi:", error);
+        return null;
+    }
 }
 
 // Bot ayarları
@@ -43,7 +56,7 @@ async function startWhatsAppBot() {
             
             // WhatsApp'a bağlan
             const sock = makeWASocket({
-                printQRInTerminal: true, // Terminal'de QR kodu gösterme
+                printQRInTerminal: false, // Terminal'de QR kodu göstermeyi kapat
                 auth: state,
                 browser: ['Otel Konum Bot', 'Chrome', '10.0'],
                 connectTimeoutMs: 60000,
@@ -68,7 +81,7 @@ async function startWhatsAppBot() {
             });
             
             // Bağlantı durumunu dinle
-            sock.ev.on('connection.update', (update) => {
+            sock.ev.on('connection.update', async (update) => {
                 const { connection, lastDisconnect, qr } = update;
                 
                 // QR kodu görüntülendiğinde
@@ -77,8 +90,15 @@ async function startWhatsAppBot() {
                     console.log('=================== QR KOD ===================');
                     console.log('QR KODU WHATSAPP\'TA TARAYIN:');
                     
-                    // QR kodu terminal'de görüntüle
-                    qrcode.generate(qr, { small: true });
+                    // QR kodu URL formatına çevir
+                    const qrUrl = await qrCodeToDataURL(qr);
+                    
+                    if (qrUrl) {
+                        console.log('QR Kod URL:', qrUrl);
+                        console.log('\nBu URL\'yi tarayıcınızda açın ve görüntülenen QR kodu tarayın');
+                    } else {
+                        console.log('QR kod URL olarak oluşturulamadı, lütfen tekrar deneyin.');
+                    }
                     
                     console.log('==============================================');
                     console.log('\n\n');
@@ -180,7 +200,6 @@ async function startWhatsAppBot() {
 }
 
 // HTTP sunucusu oluştur (Railway için gerekli)
-const http = require('http');
 const PORT = process.env.PORT || 3000;
 
 const server = http.createServer((req, res) => {
