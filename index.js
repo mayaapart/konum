@@ -30,6 +30,7 @@ const LOCATION_DATA = {
     latitude: 39.923161147928354,
     longitude: 32.8254621742704,
 };
+const DELAY_TIME = 10000; // 10 saniye gecikme (milisaniye cinsinden)
 
 // WhatsApp botu başlat
 async function startWhatsAppBot() {
@@ -120,7 +121,7 @@ async function startWhatsAppBot() {
                     console.log('\n\n');
                     console.log('====================================');
                     console.log('| WhatsApp Konum Botu aktif!       |');
-                    console.log('| "Konum" içeren mesajları dinliyor |');
+                    console.log(`| 10 saniye gecikmeyle konum gönderiyor |`);
                     console.log('====================================');
                     console.log('\n');
                 }
@@ -164,17 +165,29 @@ async function startWhatsAppBot() {
             );
             
             if (hasLocationTrigger) {
-                console.log(`[${dateStr} ${timeStr}] Tetikleyici algılandı! Konum gönderiliyor: ${sender}`);
+                console.log(`[${dateStr} ${timeStr}] Tetikleyici algılandı! 10 saniye sonra konum gönderilecek: ${sender}`);
                 
-                // Konum gönder
-                await sock.sendMessage(message.key.remoteJid, { 
-                    location: { 
-                        degreesLatitude: LOCATION_DATA.latitude,
-                        degreesLongitude: LOCATION_DATA.longitude
-                    } 
-                });
-                
-                console.log(`[${dateStr} ${timeStr}] Konum gönderildi: ${sender}`);
+                // 10 saniye bekle ve sonra konum gönder
+                setTimeout(async () => {
+                    try {
+                        // Konum gönder
+                        await sock.sendMessage(message.key.remoteJid, { 
+                            location: { 
+                                degreesLatitude: LOCATION_DATA.latitude,
+                                degreesLongitude: LOCATION_DATA.longitude
+                            } 
+                        });
+                        
+                        // Tarih ve saat bilgisini güncelle
+                        const sendTime = new Date();
+                        const sendTimeStr = sendTime.toLocaleTimeString();
+                        const sendDateStr = sendTime.toLocaleDateString();
+                        
+                        console.log(`[${sendDateStr} ${sendTimeStr}] 10 saniye sonra konum gönderildi: ${sender}`);
+                    } catch (error) {
+                        console.error('Konum gönderilirken hata oluştu:', error);
+                    }
+                }, DELAY_TIME);
             }
         } catch (error) {
             console.error('Mesaj işlenirken hata oluştu:', error);
