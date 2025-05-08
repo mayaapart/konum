@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "baileys": "latest",
+    "qrcode": "^1.5.3",
     "qrcode-terminal": "latest"
   },
   "engines": {
