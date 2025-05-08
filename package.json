@@ -1,15 +1,14 @@
 {
   "name": "whatsapp-konum-bot",
   "version": "1.0.0",
-  "description": "WhatsApp Konum Botu - Railway için",
+  "description": "WhatsApp Konum Botu - 10 saniye gecikmeli yanıt",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "baileys": "latest",
-    "qrcode": "^1.5.3",
-    "qrcode-terminal": "latest"
+    "qrcode": "^1.5.3"
   },
   "engines": {
     "node": ">=14.0.0"
