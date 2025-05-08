@@ -25,12 +25,11 @@ async function qrCodeToDataURL(qrCode) {
 }
 
 // Bot ayarları
-const LOCATION_TRIGGER_WORDS = ['konum', 'lokasyon', 'nerede', 'adres', 'location', 'where']; // Farklı dillerde tetikleyici kelimeler
+const LOCATION_TRIGGER_WORDS = ['konum', 'konun', 'knm', 'location', 'konm', 'knum']; // Farklı dillerde tetikleyici kelimeler
 const LOCATION_DATA = {
-    latitude: 39.92381451790397,
-    longitude: 32.82544004031294,
-    // İsterseniz buraya otel adı ekleyebilirsiniz
-    // name: "Otel Adı"
+    latitude: 39.923153779456236,
+    longitude: 32.825462345747084,
+    name: "Maya Apart Otel"
 };
 
 // WhatsApp botu başlat
